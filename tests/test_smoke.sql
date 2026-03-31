@@ -2,6 +2,9 @@
 -- Each query returns a row with TEST_NAME and RESULT ('PASS' or 'FAIL')
 -- The deploy script checks for any 'FAIL' results
 
+-- Force the dynamic table to refresh before running tests
+ALTER DYNAMIC TABLE CICD_DEMO.__SCHEMA__.PROPERTY_STATUS_BY_ZIP REFRESH;
+
 -- Test 1: OWNER table has rows
 SELECT 'owner_has_rows' AS TEST_NAME,
        CASE WHEN COUNT(*) > 0 THEN 'PASS' ELSE 'FAIL' END AS RESULT
