@@ -1,0 +1,49 @@
+name: Merge - Deploy to PROD & Smoke Test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  prod-deploy:
+    name: Deploy to PROD schema
+    runs-on: ubuntu-latest
+
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_DATABASE: CICD_DEMO
+      SNOWFLAKE_SCHEMA: PROD
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Write private key to file
+        run: |
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_key.p8
+          chmod 600 /tmp/snowflake_key.p8
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+
+      - name: Install SnowSQL
+        run: |
+          curl -o snowsql-linux_x86_64.bash \
+            https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.3/linux_x86_64/snowsql-1.3.2-linux_x86_64.bash
+          SNOWSQL_DEST=~/bin SNOWSQL_LOGIN_SHELL=~/.profile bash snowsql-linux_x86_64.bash
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Deploy to PROD schema
+        run: bash scripts/deploy.sh deploy
+        env:
+          SNOWFLAKE_PRIVATE_KEY_PATH: /tmp/snowflake_key.p8
+
+      - name: Run smoke tests
+        run: bash scripts/deploy.sh test
+        env:
+          SNOWFLAKE_PRIVATE_KEY_PATH: /tmp/snowflake_key.p8
+
+      - name: Cleanup private key
+        if: always()
+        run: rm -f /tmp/snowflake_key.p8
