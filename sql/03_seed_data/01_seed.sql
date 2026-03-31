@@ -74,6 +74,7 @@ VALUES
     (22, 13, 'APPROVED',      '2024-02-01'),
     -- Property 14: purchased
     (23, 14, 'PURCHASE',      '2023-11-10'),
-    -- Property 15: purchased then condemned
+    -- Property 15: purchased then condemned and demolished
     (24, 15, 'PURCHASE',      '2022-08-01'),
-    (25, 15, 'CONDEMNATION',  '2024-07-01');
+    (25, 15, 'CONDEMNATION',  '2024-07-01'),
+    (25, 15, 'CONDEMNATION',  '2026-02-01');
