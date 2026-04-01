@@ -2,7 +2,7 @@
 -- This runs on every deploy, so use INSERT OVERWRITE or TRUNCATE+INSERT pattern
 
 -- Owners
-INSERT OVERWRITE INTO CICD_DEMO.__SCHEMA__.OWNER (OWNER_ID, OWNER_NAME, OWNER_CATEGORY)
+INSERT OVERWRITE INTO CICD_DEMO.<% schema %>.OWNER (OWNER_ID, OWNER_NAME, OWNER_CATEGORY)
 VALUES
     (1,  'Alice Johnson',           'INDIVIDUAL'),
     (2,  'Bob Smith',               'INDIVIDUAL'),
@@ -16,7 +16,7 @@ VALUES
     (10, 'Priya Patel',             'INDIVIDUAL');
 
 -- Properties
-INSERT OVERWRITE INTO CICD_DEMO.__SCHEMA__.PROPERTY (PROPERTY_ID, ADDRESS, SQUARE_FEET, ZIP_CODE, OWNER_ID)
+INSERT OVERWRITE INTO CICD_DEMO.<% schema %>.PROPERTY (PROPERTY_ID, ADDRESS, SQUARE_FEET, ZIP_CODE, OWNER_ID)
 VALUES
     (1,  '100 Main St',        1200, '63101', 1),
     (2,  '202 Oak Ave',        1800, '63101', 2),
@@ -35,7 +35,7 @@ VALUES
     (15, '1565 Magnolia Blvd', 1500, '63103', 4);
 
 -- Property Events (each property has at least one; some have multiple to show history)
-INSERT OVERWRITE INTO CICD_DEMO.__SCHEMA__.PROPERTY_EVENT (EVENT_ID, PROPERTY_ID, EVENT_TYPE, EVENT_DATE)
+INSERT OVERWRITE INTO CICD_DEMO.<% schema %>.PROPERTY_EVENT (EVENT_ID, PROPERTY_ID, EVENT_TYPE, EVENT_DATE)
 VALUES
     -- Property 1: purchased then approved
     (1,  1,  'PURCHASE',      '2023-01-15'),
