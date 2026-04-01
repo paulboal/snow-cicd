@@ -59,5 +59,5 @@ FROM (
 -- Test 8: Make sure we have only one "Merged" property event
 SELECT 'only_one_merged_event' AS TEST_NAME,
        CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END AS RESULT
-FROM CICD_DEMO.__SCHEMA__.PROPERTY_EVENT
+FROM CICD_DEMO.<% schema %>.PROPERTY_EVENT
 WHERE EVENT_TYPE = 'MERGED';
