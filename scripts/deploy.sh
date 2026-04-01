@@ -80,8 +80,10 @@ case "$ACTION" in
         echo "$test_output"
         echo ""
 
-        # Check for any FAIL results
-        if echo "$test_output" | grep -q "FAIL"; then
+        # Check for any FAIL results in the output data.
+        # Use "| FAIL" to match result rows in snow sql tabular output,
+        # avoiding false positives from echoed SQL containing the string 'FAIL'.
+        if echo "$test_output" | grep -qE "\|\s*FAIL\s*\|"; then
             echo "=== SMOKE TESTS FAILED ==="
             exit 1
         fi
