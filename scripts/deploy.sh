@@ -2,70 +2,48 @@
 set -euo pipefail
 
 ###############################################################################
-# deploy.sh - Deploy SQL files to Snowflake via SnowSQL
+# deploy.sh - Deploy SQL files to Snowflake via Snowflake CLI (snow)
 #
-# Required environment variables:
-#   SNOWFLAKE_ACCOUNT        - Snowflake account identifier
-#   SNOWFLAKE_USER           - Snowflake username
-#   SNOWFLAKE_PRIVATE_KEY_PATH - Path to RSA private key file
-#   SNOWFLAKE_DATABASE       - Target database (default: CICD_DEMO)
-#   SNOWFLAKE_SCHEMA         - Target schema (TEST or PROD)
-#   SNOWFLAKE_WAREHOUSE      - Warehouse to use
+# Uses a temporary connection (-x) driven by SNOWFLAKE_* environment variables:
+#   SNOWFLAKE_ACCOUNT          - Snowflake account identifier
+#   SNOWFLAKE_USER             - Snowflake username
+#   SNOWFLAKE_AUTHENTICATOR    - Auth method (e.g. SNOWFLAKE_JWT)
+#   SNOWFLAKE_PRIVATE_KEY_RAW  - RSA private key contents (set by CLI action)
+#   SNOWFLAKE_DATABASE         - Target database (default: CICD_DEMO)
+#   SNOWFLAKE_WAREHOUSE        - Warehouse to use
+#   SNOWFLAKE_ROLE             - Role to use (optional)
+#
+# The target schema is passed as a positional argument after the action.
+#
+# Usage:
+#   deploy.sh deploy <SCHEMA>   - Deploy all SQL to the given schema
+#   deploy.sh test <SCHEMA>     - Run smoke tests against the given schema
 ###############################################################################
 
-SNOWFLAKE_DATABASE="${SNOWFLAKE_DATABASE:-CICD_DEMO}"
-SCHEMA="${SNOWFLAKE_SCHEMA:?SNOWFLAKE_SCHEMA must be set (TEST or PROD)}"
-WAREHOUSE="${SNOWFLAKE_WAREHOUSE:?SNOWFLAKE_WAREHOUSE must be set}"
-ACCOUNT="${SNOWFLAKE_ACCOUNT:?SNOWFLAKE_ACCOUNT must be set}"
-USER="${SNOWFLAKE_USER:?SNOWFLAKE_USER must be set}"
-PRIVATE_KEY_PATH="${SNOWFLAKE_PRIVATE_KEY_PATH:?SNOWFLAKE_PRIVATE_KEY_PATH must be set}"
+ACTION="${1:?Usage: deploy.sh [deploy|test] <SCHEMA>}"
+SCHEMA="${2:?Schema must be provided (TEST or PROD)}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-SNOWSQL_OPTS=(
-    --accountname "$ACCOUNT"
-    --username "$USER"
-    --private-key-path "$PRIVATE_KEY_PATH"
-    --dbname "$SNOWFLAKE_DATABASE"
-    --schemaname "$SCHEMA"
-    --warehouse "$WAREHOUSE"
-    --option exit_on_error=true
-    --option output_format=plain
-    --option friendly=false
-    --option header=true
-)
-
+# Common snow sql options: temporary connection + variable substitution
 run_sql_file() {
     local file="$1"
     local display_name="${file#$PROJECT_DIR/}"
 
     echo "========================================"
-    echo "Deploying: $display_name"
-    echo "  Schema:  $SNOWFLAKE_DATABASE.$SCHEMA"
+    echo "Running: $display_name"
+    echo "  Schema: CICD_DEMO.$SCHEMA"
     echo "========================================"
 
-    # Replace __SCHEMA__ placeholder with actual schema name
-    local tmp_file
-    tmp_file=$(mktemp)
-    sed "s/__SCHEMA__/${SCHEMA}/g" "$file" > "$tmp_file"
-
-    snowsql "${SNOWSQL_OPTS[@]}" -f "$tmp_file"
-    local rc=$?
-
-    rm -f "$tmp_file"
-    return $rc
+    snow sql -f "$file" -D "schema=$SCHEMA" -x
 }
-
-ACTION="${1:-deploy}"
 
 case "$ACTION" in
     deploy)
         echo ""
         echo "=== CICD_DEMO Deployment ==="
-        echo "  Target: $SNOWFLAKE_DATABASE.$SCHEMA"
-        echo "  Account: $ACCOUNT"
-        echo "  User: $USER"
+        echo "  Target: CICD_DEMO.$SCHEMA"
         echo ""
 
         # Deploy in order: tables -> dynamic tables -> seed data
@@ -93,22 +71,19 @@ case "$ACTION" in
 
         echo ""
         echo "=== Running smoke tests ==="
-        echo "  Target: $SNOWFLAKE_DATABASE.$SCHEMA"
+        echo "  Target: CICD_DEMO.$SCHEMA"
         echo ""
 
-        # Replace schema placeholder in test file
-        tmp_test=$(mktemp)
-        sed "s/__SCHEMA__/${SCHEMA}/g" "$TEST_FILE" > "$tmp_test"
-
         # Run tests and capture output
-        test_output=$(snowsql "${SNOWSQL_OPTS[@]}" -f "$tmp_test" 2>&1) || true
-        rm -f "$tmp_test"
+        test_output=$(snow sql -f "$TEST_FILE" -D "schema=$SCHEMA" -x 2>&1) || true
 
         echo "$test_output"
         echo ""
 
-        # Check for any FAIL results
-        if echo "$test_output" | grep -q "FAIL"; then
+        # Check for any FAIL results in the output data.
+        # Use "| FAIL" to match result rows in snow sql tabular output,
+        # avoiding false positives from echoed SQL containing the string 'FAIL'.
+        if echo "$test_output" | grep -qE "\|\s*FAIL\s*\|"; then
             echo "=== SMOKE TESTS FAILED ==="
             exit 1
         fi
@@ -117,8 +92,8 @@ case "$ACTION" in
         ;;
 
     *)
-        echo "Usage: deploy.sh [deploy|test]"
-        echo "  deploy  - Deploy SQL files to Snowflake (default)"
+        echo "Usage: deploy.sh [deploy|test] <SCHEMA>"
+        echo "  deploy  - Deploy SQL files to Snowflake"
         echo "  test    - Run smoke tests against deployed schema"
         exit 1
         ;;

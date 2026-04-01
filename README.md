@@ -31,8 +31,16 @@ snow-cicd/
 
 - **OWNER** - Property owners with category (INDIVIDUAL, INVESTOR, COMMERCIAL)
 - **PROPERTY** - Residential properties with address, size, and zip code
-- **PROPERTY_EVENT** - Status events (PURCHASE, ABANDONMENT, CONDEMNATION, APPROVED)
+- **PROPERTY_EVENT** - Status events (PURCHASE, ABANDONMENT, CONDEMNATION, APPROVED, DEMOLISHED)
 - **PROPERTY_STATUS_BY_ZIP** - Dynamic table that pivots current property status counts by zip code
+
+## Tools
+
+This project uses the modern **Snowflake CLI** (`snow`) via the official
+[`snowflakedb/snowflake-cli-action@v2.0`](https://github.com/snowflakedb/snowflake-cli-action)
+GitHub Action. SQL files use `<% schema %>` client-side template variables,
+substituted at runtime with `snow sql -D "schema=VALUE"`. Authentication uses
+RSA key-pair via environment variables (no config file or key file needed).
 
 ## Setup Instructions
 
@@ -97,7 +105,10 @@ Go to your repo **Settings > Secrets and variables > Actions** and add these sec
 | `SNOWFLAKE_ACCOUNT` | Your Snowflake account identifier (e.g. `rqb36878.us-east-1`) |
 | `SNOWFLAKE_USER` | `CICD_RUNNER` |
 | `SNOWFLAKE_WAREHOUSE` | `CICD_WH` |
-| `SNOWFLAKE_PRIVATE_KEY` | The full contents of `cicd_rsa_key.p8` (including BEGIN/END lines) |
+| `SNOWFLAKE_PRIVATE_KEY_RAW` | The full contents of `cicd_rsa_key.p8` (including BEGIN/END lines) |
+
+> **Note:** The old `SNOWFLAKE_PRIVATE_KEY` secret is no longer used. The Snowflake CLI action
+> reads `SNOWFLAKE_PRIVATE_KEY_RAW` directly as an environment variable — no temp file needed.
 
 ### 4. Branch Protection
 
@@ -129,11 +140,10 @@ git push -u origin feature/initial-setup
 ### On Pull Request (pr_test.yml)
 
 1. Checks out the PR branch
-2. Installs SnowSQL on the GitHub runner
-3. Writes the RSA private key from secrets to a temp file
-4. Runs `deploy.sh` to execute all SQL files against the **TEST** schema
-5. Runs `deploy.sh --test` to execute smoke tests against **TEST**
-6. Reports pass/fail as a GitHub check on the PR
+2. Installs the Snowflake CLI via `snowflakedb/snowflake-cli-action@v2.0`
+3. Runs `deploy.sh deploy TEST` — executes all SQL files against the **TEST** schema
+4. Runs `deploy.sh test TEST` — executes smoke tests against **TEST**
+5. Reports pass/fail as a GitHub check on the PR
 
 ### On Merge to Main (merge_deploy.yml)
 
@@ -142,11 +152,29 @@ git push -u origin feature/initial-setup
 
 ### deploy.sh
 
+- Accepts two arguments: an action (`deploy` or `test`) and a schema name (`TEST` or `PROD`)
 - Iterates through SQL directories in order (tables -> dynamic tables -> seed data)
-- Replaces the `__SCHEMA__` placeholder in each SQL file with the target schema
-- Runs each file via SnowSQL with key-pair authentication
-- `deploy.sh test` runs smoke tests only and fails if any return `FAIL`
+- Runs each file via `snow sql -f <file> -D "schema=<SCHEMA>" -x`
+  - `-D "schema=..."` substitutes `<% schema %>` template variables in the SQL
+  - `-x` uses a temporary connection from `SNOWFLAKE_*` environment variables
+- `deploy.sh test <SCHEMA>` forces a dynamic table refresh, runs smoke tests, and fails if any return `FAIL`
+
+### Authentication
+
+The workflows use RSA key-pair authentication via environment variables:
+
+- `SNOWFLAKE_ACCOUNT` — account identifier
+- `SNOWFLAKE_USER` — service account username
+- `SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT` — selects key-pair auth
+- `SNOWFLAKE_PRIVATE_KEY_RAW` — RSA private key contents (injected from GitHub secret)
+- `SNOWFLAKE_DATABASE` — target database
+- `SNOWFLAKE_WAREHOUSE` — compute warehouse
+
+No `config.toml`, no temp key files, no cleanup steps.
 
 ### Dynamic Table
 
-The `PROPERTY_STATUS_BY_ZIP` dynamic table automatically computes the latest event status for each property and pivots counts by zip code. It refreshes on a 1-hour lag, so after data changes, results update automatically.
+The `PROPERTY_STATUS_BY_ZIP` dynamic table automatically computes the latest event
+status for each property and pivots counts by zip code. It has a `TARGET_LAG = '1 minute'`.
+The smoke tests force an immediate refresh via `ALTER DYNAMIC TABLE ... REFRESH` before
+running assertions.
